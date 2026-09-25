@@ -4,6 +4,8 @@
 
 O primeiro lançamento inclui contas com senha temporária, perfis, TOTP opcional, salas, reservas com aprovação, recorrência, bloqueios, ocorrências, notificações internas e relatórios CSV. SMS, e-mail, WhatsApp e Google Calendar têm interfaces preparadas, sem provedores ou sincronização ativos.
 
+Em **Comunicação e integrações**, o administrador pode registrar o nome do provedor planejado para cada canal e o identificador do calendário de cada sala. Essas referências não ativam envios ou sincronização.
+
 ## Requisitos
 
 - Docker Engine e Docker Compose
@@ -57,6 +59,7 @@ Se o destino já contém dados, interrompa antes `api`, `worker`, `web` e `caddy
 - Interface: `web/` (Next.js + TypeScript).
 - Escopo aprovado: `.scratch/crass/spec.md`.
 - Verificação básica em **instalação descartável**: defina `CRASS_URL`, `CRASS_ADMIN_EMAIL` e `CRASS_ADMIN_PASSWORD`, depois execute `py scripts/smoke.py`. O script cria dados de teste e verifica autenticação, TOTP, permissões, conflitos simultâneos, aprovação, recorrência, alterações de série, bloqueios, notificações, histórico, relatórios e CSV.
+- Para verificar a API diretamente, `CRASS_API_URL` pode apontar para a raiz da API, sem o prefixo `/api`. O script troca a senha temporária do administrador no primeiro acesso.
 - Interface: `cd web; npm install; npm run typecheck; npm run build`.
 
 Não use `scripts/smoke.py` em uma instalação de produção: ele cria usuários, salas e reservas de teste.

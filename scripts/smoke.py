@@ -146,6 +146,11 @@ def main():
     assert pending["status"] == "pending"
     admin.call("POST", "/bookings", booking(approval["id"]), expected=409)
     assert admin.call("POST", f"/bookings/{pending['id']}/approve")["approved"] == 1
+    moved_pending = admin.call("POST", "/bookings", booking(approval["id"], 16))
+    moved_confirmed = admin.call("PATCH", f"/bookings/{moved_pending['id']}",
+                                 {"room_id": normal["id"]})
+    assert moved_confirmed["status"] == "confirmed" and moved_confirmed["expires_at"] is None
+    assert moved_confirmed["room_id"] == normal["id"]
 
     conflict_day = day + timedelta(days=7)
     admin.call("POST", "/bookings", {"room_id": approval["id"], "title": "Conflito semanal",
@@ -159,6 +164,15 @@ def main():
     assert series_rows and all(row["status"] == "pending" for row in series_rows)
     admin.call("POST", f"/bookings/{series_rows[0]['id']}/approve")
     assert admin.call("GET", f"/bookings/{series_rows[0]['id']}")["status"] == "confirmed"
+    reference = series_rows[3]
+    original_first = series_rows[0]["starts_at"]
+    admin.call("POST", f"/series/{series['id']}/change", {
+        "scope": "all", "occurrence_id": reference["id"],
+        "changes": {"title": "Série completa revisada",
+                    "starts_at": reference["starts_at"], "ends_at": reference["ends_at"]}})
+    series_rows = [row for row in admin.call("GET", f"/bookings?room_id={approval['id']}")
+                   if row["series_id"] == series["id"] and row["status"] == "confirmed"]
+    assert any(row["starts_at"] == original_first for row in series_rows)
     cutoff = series_rows[2]
     changed = admin.call("POST", f"/series/{series['id']}/change", {
         "scope": "future", "occurrence_id": cutoff["id"],
@@ -167,6 +181,25 @@ def main():
     revised = admin.call("POST", f"/series/{changed['id']}/change", {
         "scope": "all", "changes": {"description": "Descrição revisada"}})
     assert revised["id"] == changed["id"]
+
+    provider = admin.call("PATCH", "/integrations/channels/sms", {"provider": "Provedor futuro"})
+    assert provider == {"available": False, "enabled": False, "provider": "Provedor futuro"}
+    assert not admin.call("GET", "/integrations")["sms"]["enabled"]
+    link = admin.call("PATCH", f"/integrations/calendar/rooms/{normal['id']}",
+                      {"calendar_id": "sala@example.com"})
+    assert link["calendar_id"] == "sala@example.com" and not link["enabled"]
+    assert any(row["calendar_id"] == "sala@example.com"
+               for row in admin.call("GET", "/integrations/calendar/rooms"))
+
+    manager_data = admin.call("POST", "/users", {"name": "Responsável de Teste",
+        "email": f"manager-{suffix}@crass.local", "role": "manager"})
+    manager = Client()
+    manager.login(manager_data["user"]["email"], manager_data["temporary_password"])
+    manager.call("POST", "/auth/password", {"current_password": manager_data["temporary_password"],
+        "new_password": "local-manager-updated-" + suffix})
+    manager.call("PATCH", f"/rooms/{normal['id']}",
+                 {"rules": {"opening_time": "10:00"}}, expected=403)
+    manager.call("POST", "/buildings", {"name": f"Outro {suffix}"}, expected=403)
 
     user = admin.call("POST", "/users", {"name": "Usuário de Teste",
         "email": f"test-{suffix}@crass.local", "role": "user"})

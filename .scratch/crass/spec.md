@@ -1,6 +1,6 @@
 # CRASS — Central de Reserva e Agendamento de Salas e Serviços
 
-Status: implementation-in-progress
+Status: ready-for-human
 
 ## Problem Statement
 
@@ -108,6 +108,6 @@ Construir o CRASS do zero como aplicação web em português. Cada organização
 
 ## Further Notes
 
-- Esta especificação substitui o antigo escopo preliminar. O projeto foi iniciado como repositório Git local sem remoto configurado; por isso, a publicação usa o rastreador Markdown local.
-- Os pontos de teste foram aceitos quando o usuário confirmou o plano de construção. A implementação inicial e a validação local por Docker Compose estão em andamento.
+- Esta especificação substitui o antigo escopo preliminar. O repositório agora tem remoto Git; esta especificação continua sendo a fonte de escopo da primeira entrega.
+- A verificação completa da API em instalação descartável passou antes das correções da revisão. A compilação Next.js e a checagem de tipos passaram após essas correções. A nova execução com PostgreSQL e a inspeção visual dependem de retomar o Docker Desktop, que está pausado nesta máquina.
 - A integração futura com uma conta @gmail.com é viável com calendários separados, mas cada organização precisará configurar OAuth para uso contínuo. Projetos OAuth em modo de teste têm limitações de validade de token, conforme a [documentação do Google](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview).

@@ -78,10 +78,33 @@ class Room(Base):
     rules: Mapped[dict] = mapped_column(JSON, default=dict)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     building: Mapped[Building] = relationship()
+    photos: Mapped[list["RoomPhoto"]] = relationship(back_populates="room", order_by="RoomPhoto.created_at")
     __table_args__ = (
         UniqueConstraint("building_id", "name", name="uq_room_building_name"),
         CheckConstraint("capacity > 0", name="ck_room_capacity"),
     )
+
+
+class RoomPhoto(Base):
+    __tablename__ = "room_photos"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    room: Mapped[Room] = relationship(back_populates="photos")
+
+
+class ChannelProviderConfig(Base):
+    __tablename__ = "channel_provider_config"
+    channel: Mapped[str] = mapped_column(String(20), primary_key=True)
+    provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RoomCalendarLink(Base):
+    __tablename__ = "room_calendar_links"
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
+    calendar_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class Series(Base):

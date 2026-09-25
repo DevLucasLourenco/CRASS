@@ -34,6 +34,7 @@ export default function RoomCatalog({ user, toast, go }: Props) {
   const [features, setFeatures] = useState('');
   const [approval, setApproval] = useState(false);
   const [active, setActive] = useState(true);
+  const [photoIndexes, setPhotoIndexes] = useState<Record<string, number>>({});
   const [newBuilding, setNewBuilding] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
@@ -91,7 +92,7 @@ export default function RoomCatalog({ user, toast, go }: Props) {
     try {
       const body = { building_id: formBuilding, name, floor, location, capacity,
         features: features.split(',').map(value => value.trim()).filter(Boolean),
-        approval_required: approval, active };
+        ...(user.role === 'admin' ? { approval_required: approval } : {}), active };
       if (editing) await api(`/rooms/${editing.id}`, json('PATCH', body));
       else await api('/rooms', json('POST', body));
       setFormOpen(false);
@@ -116,7 +117,8 @@ export default function RoomCatalog({ user, toast, go }: Props) {
     const body = new FormData();
     body.append('file', file);
     try {
-      await api(`/rooms/${roomId}/photo`, { method: 'POST', body });
+      const updated = await api<Room>(`/rooms/${roomId}/photo`, { method: 'POST', body });
+      setEditing(updated);
       setReload(value => value + 1);
       toast('Foto atualizada.');
     } catch (error) { setError(message(error)); }
@@ -151,22 +153,22 @@ export default function RoomCatalog({ user, toast, go }: Props) {
         <label>Capacidade<input type="number" min={1} required value={capacity} onChange={event => setCapacity(Number(event.target.value))}/></label>
         <label>Recursos <span className="muted">separados por vírgula</span><input value={features} onChange={event => setFeatures(event.target.value)}/></label>
       </div>
-      <label className="check-row"><input type="checkbox" checked={approval} onChange={event => setApproval(event.target.checked)}/> Reservas exigem aprovação</label>
+      {user.role === 'admin' && <label className="check-row"><input type="checkbox" checked={approval} onChange={event => setApproval(event.target.checked)}/> Reservas exigem aprovação</label>}
       <label className="check-row"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)}/> Sala ativa</label>
       <div className="form-actions"><button className="button primary">Salvar sala</button><button type="button" className="button subtle" onClick={() => setFormOpen(false)}>Cancelar</button></div>
-      {editing && <label className="upload-label">Foto da sala<input type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (file) upload(editing.id, file); }}/></label>}
+      {editing && <div className="room-photo-manager"><label className="upload-label">Fotos da sala<input type="file" accept="image/*" multiple onChange={async event => { for (const file of Array.from(event.target.files || [])) await upload(editing.id, file); }}/></label><div className="room-photo-list">{editing.photos.map(path => <img key={path} src={path} alt={`Foto da sala ${editing.name}`}/>)}</div></div>}
     </form>}
-    {elevated && <form className="inline-building" onSubmit={addBuilding}><label>Novo prédio<input required minLength={2} value={newBuilding} onChange={event => setNewBuilding(event.target.value)} placeholder="Nome do prédio"/></label><label>Endereço<input value={newAddress} onChange={event => setNewAddress(event.target.value)}/></label><button className="button subtle">Adicionar prédio</button></form>}
-    <div className="room-grid">{filtered.map(room => <article className="room-card" key={room.id}>
-      {room.photo ? <img src={room.photo} alt={`Foto da ${room.name}`}/> : <div className="room-photo"><Icon name="room" size={42}/></div>}
+    {user.role === 'admin' && <form className="inline-building" onSubmit={addBuilding}><label>Novo prédio<input required minLength={2} value={newBuilding} onChange={event => setNewBuilding(event.target.value)} placeholder="Nome do prédio"/></label><label>Endereço<input value={newAddress} onChange={event => setNewAddress(event.target.value)}/></label><button className="button subtle">Adicionar prédio</button></form>}
+    <div className="room-grid">{filtered.map(room => { const photos = room.photos.length ? room.photos : room.photo ? [room.photo] : []; const index = photoIndexes[room.id] === undefined ? photos.length - 1 : photoIndexes[room.id] % photos.length; return <article className="room-card" key={room.id}>
+      <div className="room-card-media">{photos.length ? <img src={photos[index]} alt={`Foto ${index + 1} de ${photos.length} da ${room.name}`}/> : <div className="room-photo"><Icon name="room" size={42}/></div>}{photos.length > 1 && <div className="room-photo-controls"><button type="button" aria-label={`Foto anterior da ${room.name}`} onClick={() => setPhotoIndexes(previous => ({ ...previous, [room.id]: (index - 1 + photos.length) % photos.length }))}>‹</button><span>{index + 1}/{photos.length}</span><button type="button" aria-label={`Próxima foto da ${room.name}`} onClick={() => setPhotoIndexes(previous => ({ ...previous, [room.id]: (index + 1) % photos.length }))}>›</button></div>}</div>
       <div className="room-card-body"><div className="room-card-title"><h3>{room.name}</h3><span className={`status ${!room.active || (day && !room.available) ? 'unavailable' : 'available'}`}>{!room.active ? 'Indisponível' : day ? room.available ? 'Disponível' : 'Ocupada ou fora das regras' : 'Ativa'}</span></div>
         <p>{room.building_name} · {room.floor || 'Andar não informado'}</p>
         <p>{room.capacity} pessoas · {room.features.join(', ') || 'Sem recursos cadastrados'}</p>
         {room.approval_required && <small>Aprovação necessária</small>}
         <div className="room-card-actions"><button className="button primary small" disabled={!room.active || Boolean(day && !room.available)} onClick={() => reserve(room)}>Reservar</button>{elevated && <button className="button subtle small" onClick={() => openForm(room)}>Editar</button>}</div>
       </div>
-    </article>)}</div>
+    </article>; })}</div>
     {!filtered.length && <p className="empty">Nenhuma sala encontrada.</p>}
-    {elevated && <RoomRulesEditor rooms={rooms} onSaved={() => setReload(value => value + 1)} toast={toast}/>}
+    {user.role === 'admin' && <RoomRulesEditor rooms={rooms} onSaved={() => setReload(value => value + 1)} toast={toast}/>}
   </div>;
 }

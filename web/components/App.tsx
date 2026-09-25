@@ -8,9 +8,10 @@ import Shell from './Shell';
 import DashboardView from './Dashboard';
 import BookingForm from './BookingForm';
 import RoomCatalog from './RoomCatalog';
+import IntegrationsView from './Integrations';
 import AccountView from './Account';
 import AuditView from './Audit';
-import { AgendaView, BookingsView, BlocksView, IncidentsView, ReportsView, UsersView, RulesView, IntegrationsView, NoticesView } from './Views';
+import { AgendaView, BookingsView, BlocksView, IncidentsView, ReportsView, UsersView, RulesView, NoticesView } from './Views';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);

@@ -1,7 +1,7 @@
 export type Role = 'admin' | 'manager' | 'user';
 export type User = { id: string; name: string; email: string; role: Role; active: boolean; must_change_password: boolean; totp_enabled: boolean };
 export type Building = { id: string; name: string; address: string };
-export type Room = { id: string; building_id: string; building_name: string; name: string; floor: string; location: string; capacity: number; features: string[]; photo: string | null; approval_required: boolean; rules: Record<string, string | number>; active: boolean; available?: boolean; state?: string; next_booking?: string | null };
+export type Room = { id: string; building_id: string; building_name: string; name: string; floor: string; location: string; capacity: number; features: string[]; photo: string | null; photos: string[]; approval_required: boolean; rules: Record<string, string | number>; active: boolean; available?: boolean; state?: string; next_booking?: string | null };
 export type Booking = { id: string; room_id: string; room_name: string; organizer_id: string; organizer_name: string; series_id: string | null; title: string; description: string; attendees: number; starts_at: string; ends_at: string; status: string; expires_at: string | null; ended_at: string | null; block_conflict: boolean };
 export type Incident = { id: string; room_id: string; reporter_id: string; title: string; description: string; status: string; created_at: string; resolved_at: string | null };
 export type Block = { id: string; room_id: string; starts_at: string; ends_at: string; reason: string };

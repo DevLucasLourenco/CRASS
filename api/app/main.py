@@ -17,7 +17,7 @@ from PIL import Image
 
 from .db import Base, SessionLocal, engine, get_db
 from .integrations import Message, in_app_messaging
-from .models import Audit, Block, Booking, Building, Incident, Notification, Room, Series, Session as UserSession, Settings, User, now
+from .models import Audit, Block, Booking, Building, ChannelProviderConfig, Incident, Notification, Room, RoomCalendarLink, RoomPhoto, Series, Session as UserSession, Settings, User, now
 from .scheduling import ACTIVE, booking_conflicts_block, expand_series, has_conflict, make_booking, overlap, rules_for, utc, validate_interval
 from .security import (COOKIE_NAME, SESSION_DAYS, create_session, csrf_for, current_user,
                        generate_recovery_codes, hash_password, new_totp_secret,
@@ -355,7 +355,7 @@ def buildings(db: DbSession = Depends(get_db), user: User = Depends(current_user
 
 @app.post("/buildings")
 def create_building(data: BuildingIn, db: DbSession = Depends(get_db),
-                    user: User = Depends(require("admin", "manager"))):
+                    user: User = Depends(require("admin"))):
     item = Building(name=data.name.strip(), address=data.address.strip())
     db.add(item)
     try:
@@ -369,11 +369,15 @@ def create_building(data: BuildingIn, db: DbSession = Depends(get_db),
 
 
 def room_data(room: Room) -> dict:
+    photos = [photo.path for photo in room.photos]
+    if room.photo and room.photo not in photos:
+        photos.insert(0, room.photo)
     return {"id": room.id, "building_id": room.building_id,
             "building_name": room.building.name, "name": room.name,
             "floor": room.floor, "location": room.location,
             "capacity": room.capacity, "features": room.features,
-            "photo": room.photo, "approval_required": room.approval_required,
+            "photo": photos[-1] if photos else None, "photos": photos,
+            "approval_required": room.approval_required,
             "rules": room.rules, "active": room.active}
 
 
@@ -417,6 +421,8 @@ def create_room(data: RoomIn, db: DbSession = Depends(get_db),
                 user: User = Depends(require("admin", "manager"))):
     if not db.get(Building, data.building_id):
         raise HTTPException(404, "Prédio não encontrado.")
+    if user.role != "admin" and (data.rules or data.approval_required):
+        raise HTTPException(403, "Somente o administrador configura regras de reserva.")
     validate_room_rules(db, data.rules)
     item = Room(**data.model_dump())
     db.add(item)
@@ -437,6 +443,8 @@ def patch_room(room_id: str, data: RoomPatch, db: DbSession = Depends(get_db),
     if not room:
         raise HTTPException(404, "Sala não encontrada.")
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
+    if user.role != "admin" and ("rules" in changes or "approval_required" in changes):
+        raise HTTPException(403, "Somente o administrador configura regras de reserva.")
     if changes.get("building_id") and not db.get(Building, changes["building_id"]):
         raise HTTPException(404, "Prédio não encontrado.")
     if "rules" in changes:
@@ -471,7 +479,8 @@ async def room_photo(room_id: str, file: UploadFile = File(...),
         raise HTTPException(422, "Imagem inválida.") from exc
     name = f"{room.id}-{secrets.token_hex(5)}.jpg"
     image.save(UPLOAD_DIR / name, format="JPEG", quality=85)
-    room.photo = f"/api/uploads/{name}"
+    db.add(RoomPhoto(room_id=room.id, path=f"/api/uploads/{name}"))
+    audit(db, user, "room_photo_added", "room", room.id)
     db.commit()
     return room_data(room)
 
@@ -592,13 +601,14 @@ def patch_booking(booking_id: str, data: BookingPatch,
     if conflict:
         raise HTTPException(409, conflict)
     for key, value in changes.items():
-        setattr(item, key, value)
+        if key != "room_id":
+            setattr(item, key, value)
     item.starts_at, item.ends_at = start, end
-    if room.id != item.room_id:
-        item.room_id = room.id
-    if room.approval_required and ("room_id" in changes or "starts_at" in changes or "ends_at" in changes):
-        item.status = "pending"
-        item.expires_at = now() + timedelta(minutes=db.get(Settings, 1).pending_minutes)
+    item.room = room
+    if "room_id" in changes or "starts_at" in changes or "ends_at" in changes:
+        item.status = "pending" if room.approval_required else "confirmed"
+        item.expires_at = (now() + timedelta(minutes=db.get(Settings, 1).pending_minutes)
+                           if item.status == "pending" else None)
     try:
         db.flush()
         audit(db, user, "booking_updated", "booking", item.id, list(changes))
@@ -759,6 +769,7 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
         if not item or item.series_id != series.id:
             raise HTTPException(404, "Ocorrência não encontrada.")
         return {"booking": patch_booking(item.id, data.changes, db, user)}
+    reference = None
     if data.scope == "future":
         cutoff_booking = db.get(Booking, data.occurrence_id)
         if not cutoff_booking or cutoff_booking.series_id != series.id:
@@ -766,6 +777,10 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
         cutoff = cutoff_booking.starts_at
     else:
         cutoff = now()
+        if data.occurrence_id:
+            reference = db.get(Booking, data.occurrence_id)
+            if not reference or reference.series_id != series.id:
+                raise HTTPException(404, "Ocorrência de referência não encontrada.")
     changes = data.changes.model_dump(exclude_unset=True, exclude_none=True)
     new_room_id = changes.get("room_id", series.room_id)
     room = db.get(Room, new_room_id)
@@ -775,9 +790,12 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
         raise HTTPException(422, "Recorrência inválida.")
     if data.weekdays is not None and any(day not in range(7) for day in data.weekdays):
         raise HTTPException(422, "Dias da semana inválidos.")
-    original_duration = series.ends_at - series.starts_at
-    new_start = utc(changes.get("starts_at", cutoff if data.scope == "future" else series.starts_at))
-    new_end = utc(changes.get("ends_at", new_start + original_duration))
+    if data.scope == "all" and reference:
+        new_start = series.starts_at + (utc(changes["starts_at"]) - reference.starts_at) if "starts_at" in changes else series.starts_at
+        new_end = series.ends_at + (utc(changes["ends_at"]) - reference.ends_at) if "ends_at" in changes else series.ends_at
+    else:
+        new_start = utc(changes.get("starts_at", cutoff if data.scope == "future" else series.starts_at))
+        new_end = utc(changes.get("ends_at", cutoff_booking.ends_at if data.scope == "future" else series.ends_at))
     validate_interval(db, room, new_start, new_end, changes.get("attendees", series.attendees),
                       check_notice=False)
     future_rows = db.scalars(select(Booking).where(Booking.series_id == series.id,
@@ -1002,8 +1020,10 @@ def dashboard(db: DbSession = Depends(get_db), user: User = Depends(current_user
                     .order_by(Booking.starts_at)).all()
     blocks = db.scalars(select(Block).where(
         overlap(start, end, Block.starts_at, Block.ends_at))).all()
-    busy = {row.room_id for row in day if row.starts_at <= now() < row.ends_at and row.status == "confirmed"}
+    busy = {row.room_id for row in day if row.status == "confirmed" and row.starts_at <= now() < row.ends_at}
     unavailable = {row.room_id for row in blocks if row.starts_at <= now() < row.ends_at}
+    unavailable.update(row.room_id for row in day if row.status == "pending" and row.starts_at <= now() < row.ends_at)
+    busy -= unavailable
     next_by_room = {}
     for row in day:
         if row.starts_at > now() and row.room_id not in next_by_room:
@@ -1108,9 +1128,67 @@ def audit_log(db: DbSession = Depends(get_db), user: User = Depends(require("adm
 
 
 @app.get("/integrations")
-def integrations(user: User = Depends(require("admin"))):
+def integrations(db: DbSession = Depends(get_db), user: User = Depends(require("admin"))):
+    channels = {item.channel: item for item in db.scalars(select(ChannelProviderConfig)).all()}
     return {"in_app": {"available": True, "enabled": True},
-            "sms": {"available": False, "enabled": False},
-            "email": {"available": False, "enabled": False},
-            "whatsapp": {"available": False, "enabled": False},
+            **{channel: {"available": False, "enabled": False,
+                         "provider": channels[channel].provider if channel in channels else None}
+               for channel in ("sms", "email", "whatsapp")},
             "google_calendar": {"available": False, "enabled": False}}
+
+
+class ChannelProviderIn(BaseModel):
+    provider: str | None = Field(default=None, max_length=80)
+
+
+@app.patch("/integrations/channels/{channel}")
+def configure_channel(channel: str, data: ChannelProviderIn,
+                      db: DbSession = Depends(get_db),
+                      user: User = Depends(require("admin"))):
+    if channel not in ("sms", "email", "whatsapp"):
+        raise HTTPException(404, "Canal externo não encontrado.")
+    item = db.get(ChannelProviderConfig, channel)
+    if not item:
+        item = ChannelProviderConfig(channel=channel)
+        db.add(item)
+    item.provider = data.provider.strip() if data.provider else None
+    if item.provider == "":
+        item.provider = None
+    item.enabled = False
+    audit(db, user, "channel_provider_prepared", "channel", channel,
+          {"provider": item.provider})
+    db.commit()
+    return {"available": False, "enabled": False, "provider": item.provider}
+
+
+@app.get("/integrations/calendar/rooms")
+def room_calendar_links(db: DbSession = Depends(get_db),
+                        user: User = Depends(require("admin"))):
+    links = {item.room_id: item.calendar_id for item in db.scalars(select(RoomCalendarLink)).all()}
+    return [{"room_id": room.id, "room_name": room.name,
+             "building_name": room.building.name, "calendar_id": links.get(room.id)}
+            for room in db.scalars(select(Room).order_by(Room.name)).all()]
+
+
+class CalendarLinkIn(BaseModel):
+    calendar_id: str | None = Field(default=None, max_length=255)
+
+
+@app.patch("/integrations/calendar/rooms/{room_id}")
+def configure_room_calendar(room_id: str, data: CalendarLinkIn,
+                            db: DbSession = Depends(get_db),
+                            user: User = Depends(require("admin"))):
+    if not db.get(Room, room_id):
+        raise HTTPException(404, "Sala não encontrada.")
+    item = db.get(RoomCalendarLink, room_id)
+    if not item:
+        item = RoomCalendarLink(room_id=room_id)
+        db.add(item)
+    item.calendar_id = data.calendar_id.strip() if data.calendar_id else None
+    if item.calendar_id == "":
+        item.calendar_id = None
+    audit(db, user, "room_calendar_prepared", "room", room_id,
+          {"calendar_id": item.calendar_id})
+    db.commit()
+    return {"room_id": room_id, "calendar_id": item.calendar_id,
+            "available": False, "enabled": False}

@@ -14,3 +14,5 @@
 @media(max-width:530px){.booking-step strong:last-child{display:none}}
 @media(max-width:800px){.sidebar{visibility:hidden}.sidebar.mobile-open{visibility:visible}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+.room-photo-manager{margin-top:18px}.room-photo-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}.room-photo-list img{width:120px;height:84px;object-fit:cover;border-radius:5px;border:1px solid var(--line)}
+.room-card-media{height:140px;position:relative;background:#eef4fb}.room-card-media>img,.room-card-media>.room-photo{width:100%;height:100%;object-fit:cover}.room-photo-controls{position:absolute;bottom:8px;right:8px;display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;background:#102a46d9;color:#fff;font-size:12px}.room-photo-controls button{border:0;background:transparent;color:#fff;font-size:20px;line-height:1;width:26px;height:26px}
