@@ -1,5 +1,6 @@
 FROM node:22-alpine AS build
 WORKDIR /app
+ENV API_INTERNAL_URL=http://api:8000
 COPY package*.json ./
 RUN npm ci
 COPY . .

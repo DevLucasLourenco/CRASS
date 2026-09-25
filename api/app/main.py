@@ -798,6 +798,15 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
         new_end = utc(changes.get("ends_at", cutoff_booking.ends_at if data.scope == "future" else series.ends_at))
     validate_interval(db, room, new_start, new_end, changes.get("attendees", series.attendees),
                       check_notice=False)
+    previous_start = cutoff_booking.starts_at if data.scope == "future" else series.starts_at
+    previous_end = cutoff_booking.ends_at if data.scope == "future" else series.ends_at
+    schedule_changed = (new_room_id != series.room_id or new_start != previous_start or
+                        new_end != previous_end or
+                        (data.frequency is not None and data.frequency != series.frequency) or
+                        (data.interval is not None and data.interval != series.interval) or
+                        (data.weekdays is not None and data.weekdays != series.weekdays))
+    approval_status = ("pending" if room.approval_required and
+                       (series.approval_status != "confirmed" or schedule_changed) else "confirmed")
     future_rows = db.scalars(select(Booking).where(Booking.series_id == series.id,
         Booking.starts_at >= cutoff, Booking.status.in_(ACTIVE))).all()
     for row in future_rows:
@@ -814,7 +823,7 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
                         starts_at=new_start, ends_at=new_end,
                         until=utc(data.until) if data.until else None,
                         generated_until=now() - timedelta(seconds=1),
-                        approval_status="pending" if room.approval_required else "confirmed")
+                        approval_status=approval_status)
         db.add(target)
         db.flush()
     else:
@@ -833,7 +842,7 @@ def change_series(series_id: str, data: SeriesChange, db: DbSession = Depends(ge
             target.until = utc(data.until)
         target.generated_until = now() - timedelta(seconds=1)
         target.skipped = []
-        target.approval_status = "pending" if room.approval_required else "confirmed"
+        target.approval_status = approval_status
     db.flush()
     skipped = expand_series(db, target)
     audit(db, user, "series_changed", "series", target.id,
