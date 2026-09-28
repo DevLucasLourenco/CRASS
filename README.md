@@ -15,7 +15,7 @@ Em **Comunicação e integrações**, o administrador pode registrar o nome do p
 ## Instalação
 
 1. Copie `.env.example` para `.env` e preencha domínio, senha do PostgreSQL, segredo de sessão e credenciais temporárias do administrador. Use senhas e segredo aleatórios; não envie `.env` ao Git.
-2. Execute `docker compose up -d --build` na pasta do projeto.
+2. No Windows, execute `.\start-all.ps1` na pasta do projeto. O script valida o `.env`, constrói as imagens, inicia todos os serviços e mostra o estado deles. Em outros sistemas, execute `docker compose up -d --build`.
 3. Acesse `https://SEU_DOMINIO`. O administrador troca a senha temporária no primeiro acesso.
 4. Em **Regras de reserva**, configure organização, fuso, horário e prazos. Cadastre prédios em **Salas**, depois as salas e os usuários.
 
