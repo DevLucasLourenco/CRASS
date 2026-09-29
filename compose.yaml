@@ -22,7 +22,7 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?Configure SESSION_SECRET}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?Configure BOOTSTRAP_ADMIN_EMAIL}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Configure BOOTSTRAP_ADMIN_PASSWORD}
-      COOKIE_SECURE: "true"
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       UPLOAD_DIR: /app/uploads
     volumes:
       - room_photos:/app/uploads
@@ -60,8 +60,8 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?Configure DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_BIND_ADDRESS:-0.0.0.0}:80:80"
+      - "${HTTPS_BIND_ADDRESS:-0.0.0.0}:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

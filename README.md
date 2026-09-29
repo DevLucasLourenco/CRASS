@@ -21,6 +21,19 @@ Em **Comunicação e integrações**, o administrador pode registrar o nome do p
 
 O banco, as fotos e os dados do Caddy ficam em volumes Docker persistentes. A API de saúde está em `/api/health`; a documentação REST em `/api/docs`.
 
+### Acesso local por HTTP
+
+Para abrir o CRASS somente neste computador, configure no `.env`:
+
+```dotenv
+DOMAIN=http://localhost
+COOKIE_SECURE=false
+HTTP_BIND_ADDRESS=127.0.0.1
+HTTPS_BIND_ADDRESS=127.0.0.1
+```
+
+Execute `./start-all.ps1` no Windows e acesse `http://localhost/`. O bind em `127.0.0.1` mantém as portas acessíveis somente no próprio computador. Para uma instalação publicada, use um domínio real e HTTPS.
+
 ## Backup
 
 Faça cópias do banco, das fotos e do arquivo `.env`, mantendo-os em armazenamento seguro. Exemplo em PowerShell, com a instalação iniciada:
