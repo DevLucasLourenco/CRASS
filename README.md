@@ -30,9 +30,10 @@ DOMAIN=http://localhost
 COOKIE_SECURE=false
 HTTP_BIND_ADDRESS=127.0.0.1
 HTTPS_BIND_ADDRESS=127.0.0.1
+WEB_BIND_ADDRESS=127.0.0.1
 ```
 
-Execute `./start-all.ps1` no Windows e acesse `http://localhost/`. O bind em `127.0.0.1` mantém as portas acessíveis somente no próprio computador. Para uma instalação publicada, use um domínio real e HTTPS.
+Execute `./start-all.ps1` no Windows e acesse `http://localhost:3000/` (ou `http://localhost/`). O bind em `127.0.0.1` mantém as portas acessíveis somente no próprio computador. Para uma instalação publicada, use um domínio real e HTTPS.
 
 ## Backup
 
